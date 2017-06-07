@@ -69,7 +69,7 @@ function ThroughputRule(config) {
         if (abrController.getAbandonmentStateFor(mediaType) !== AbrController.ABANDON_LOAD) {
 
             if (bufferStateVO.state === BufferController.BUFFER_LOADED || isDynamic) {
-                let throughput = abrController.getAverageThroughput(mediaType, isDynamic);
+                let throughput = abrController.getAverageThroughput(mediaType, isDynamic) * mediaPlayerModel.getBandwidthSafetyFactor();
                 let latency = abrController.getAverageLatency(mediaType);
                 switchRequest.quality = abrController.getQualityForBitrate(mediaInfo, throughput, latency);
                 streamProcessor.getScheduleController().setTimeToLoadDelay(0);
