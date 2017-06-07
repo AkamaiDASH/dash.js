@@ -44,7 +44,9 @@ import RulesContext from '../rules/RulesContext.js';
 import SwitchRequest from '../rules/SwitchRequest.js';
 import SwitchRequestHistory from '../rules/SwitchRequestHistory.js';
 import DroppedFramesHistory from '../rules/DroppedFramesHistory.js';
+import ThroughputEstimate from '../rules/ThroughputEstimate.js';
 import MetricsModel from '../models/MetricsModel.js';
+import {HTTPRequest} from '../vo/metrics/HTTPRequest';
 import DashMetrics from '../../dash/DashMetrics.js';
 import Debug from '../../core/Debug';
 
@@ -69,7 +71,6 @@ function AbrController() {
         qualityDict,
         bitrateDict,
         ratioDict,
-        averageThroughputDict,
         streamProcessorDict,
         abandonmentStateDict,
         abandonmentTimeout,
@@ -86,6 +87,7 @@ function AbrController() {
         playbackIndex,
         switchHistoryDict,
         droppedFramesHistory,
+        throughputEstimate,
         metricsModel,
         dashMetrics,
         lastSwitchTime;
@@ -97,7 +99,6 @@ function AbrController() {
         qualityDict = {};
         bitrateDict = {};
         ratioDict = {};
-        averageThroughputDict = {};
         abandonmentStateDict = {};
         streamProcessorDict = {};
         switchHistoryDict = {};
@@ -127,13 +128,17 @@ function AbrController() {
             droppedFramesHistory = DroppedFramesHistory(context).create();
             setElementSize();
         }
+        eventBus.on(MediaPlayerEvents.METRIC_ADDED, onMetricAdded, this);
+        throughputEstimate = ThroughputEstimate().create();
     }
 
     function reset() {
         eventBus.off(Events.LOADING_PROGRESS, onFragmentLoadProgress, this);
         eventBus.off(MediaPlayerEvents.QUALITY_CHANGE_RENDERED, onQualityChangeRendered, this);
+        eventBus.off(MediaPlayerEvents.METRIC_ADDED, onMetricAdded, this);
         playbackIndex = undefined;
         droppedFramesHistory = undefined;
+        throughputEstimate = undefined;
         clearTimeout(abandonmentTimeout);
         abandonmentTimeout = null;
         setup();
@@ -154,6 +159,12 @@ function AbrController() {
         if (e.mediaType === 'video') {
             playbackIndex = e.newQuality;
             droppedFramesHistory.push(playbackIndex, videoModel.getPlaybackQuality());
+        }
+    }
+
+    function onMetricAdded(e) {
+        if (e.metric === 'HttpList' && e.value && e.value.type === HTTPRequest.MEDIA_SEGMENT_TYPE && (e.mediaType === 'audio' || e.mediaType === 'video')) {
+            throughputEstimate.push(e.mediaType, e.value);
         }
     }
 
@@ -432,12 +443,13 @@ function AbrController() {
         return isBufferRich;
     }
 
-    function setAverageThroughput(type, value) {
-        averageThroughputDict[type] = value;
+    function getAverageThroughput(mediaType, isDynamic) {
+        let sampleSize = throughputEstimate.getSampleSize(mediaType, isDynamic);
+        return throughputEstimate.getAverageThroughput(mediaType, sampleSize);
     }
 
-    function getAverageThroughput(type) {
-        return averageThroughputDict[type];
+    function getAverageLatency(mediaType) {
+        return throughputEstimate.getAverageLatency(mediaType);
     }
 
     function updateTopQualityIndex(mediaInfo) {
@@ -603,6 +615,7 @@ function AbrController() {
         isPlayingAtTopQuality: isPlayingAtTopQuality,
         updateTopQualityIndex: updateTopQualityIndex,
         getAverageThroughput: getAverageThroughput,
+        getAverageLatency: getAverageLatency,
         getBitrateList: getBitrateList,
         getQualityForBitrate: getQualityForBitrate,
         getMaxAllowedBitrateFor: getMaxAllowedBitrateFor,
@@ -626,7 +639,6 @@ function AbrController() {
         setAbandonmentStateFor: setAbandonmentStateFor,
         setPlaybackQuality: setPlaybackQuality,
         checkPlaybackQuality: checkPlaybackQuality,
-        setAverageThroughput: setAverageThroughput,
         getTopQualityIndexFor: getTopQualityIndexFor,
         setElementSize: setElementSize,
         setWindowResizeEventCalled: setWindowResizeEventCalled,
